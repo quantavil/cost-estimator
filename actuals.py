@@ -59,7 +59,15 @@ def load(text, id_key="interview.id"):
     text = text.strip()
     if text.startswith("{") and '"resourceSpans"' in text[:2000]:
         return from_otlp(json.loads(text), id_key)
-    return [json.loads(line) for line in text.splitlines() if line.strip()], 0
+    events = []
+    for n, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"usage log line {n}: {exc.msg}") from None
+    return events, 0
 
 
 def attribute(events, usd_inr=None):

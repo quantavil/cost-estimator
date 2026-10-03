@@ -1,12 +1,45 @@
 # Interview Cost Workbench
 
-What one AI interview costs (Phase 1), where to cut it (Phase 2), what it actually cost (Phase 3), and what the hiring plan will cost (Phase 4). One YAML profile (`data/interview.yaml`) drives all four.
+What one AI interview costs (Phase 1), where to cut it (Phase 2), what it actually cost (Phase 3), and what the hiring plan will cost (Phase 4). One YAML profile (`data/interview.yaml`) drives all four. Runs on localhost and needs no internet.
+
+## Run with Docker (recommended)
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/streamlit run app.py
-.venv/bin/python -m pytest -q
+mkdir -p repos reports                 # put (or symlink) repos to scan under ./repos
+docker compose up -d --build           # http://127.0.0.1:8501, reachable from this machine only
+# in the app, scan /repos/<name>
+
+docker compose run --rm report --date 2026-10-03            # writes reports/report.html, no network
+docker compose run --rm report --usage reports/usage.jsonl  # with Phase 3 actuals
 ```
+
+The container:
+- runs as your user (`HOST_UID`/`HOST_GID`, default 1000);
+- has a read-only filesystem, no Linux capabilities and the telemetry of Semgrep, ai-bom and Streamlit switched off;
+- binds to `127.0.0.1` only;
+- generates reports with `network_mode: none`.
+
+It contains no git, so scan mounted folders; URL cloning is available only when running outside Docker. The image is about 1.2 GB, mostly Semgrep's engine.
+
+## Run without Docker
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/streamlit run app.py         # .streamlit/config.toml binds 127.0.0.1, stats off
+.venv/bin/python report.py --usage tests/fixtures/usage_synthetic.jsonl --synthetic --out report.html
+.venv/bin/python -m pytest -q          # 67 tests: unit, property (hypothesis), report, headless UI (AppTest)
+```
+
+## Static report
+
+`report.py` renders `templates/report.html.j2` (Jinja2, autoescaped) into one self-contained HTML file:
+- inline CSS and SVG only: no scripts, fonts or CDNs, so it opens offline;
+- light and dark themes;
+- prints cleanly to PDF;
+- the same inputs and `--date` give byte-identical output;
+- the provenance section records SHA-256 digests of the inputs.
+
+The app's sidebar also offers **Download HTML report**.
 
 | Phase | File | What it does |
 | --- | --- | --- |
@@ -30,3 +63,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 - **USD→INR:** indicative only.
 - **Calibration:** needs a real interview log and the matching invoices.
 - **Funnel drivers:** assumed. Replace them from your ATS.
+
+## License
+
+GPL-3.0-only. See `LICENSE`. `data/model_prices.json` is LiteLLM's MIT-licensed price file; see `NOTICE`.

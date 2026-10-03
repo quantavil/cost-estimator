@@ -9,6 +9,7 @@ import streamlit as st
 import actuals as act
 import estimate as est
 import forecast as fc
+import report as rpt
 import scan
 
 st.set_page_config(page_title="Interview Cost Workbench", layout="wide")
@@ -73,7 +74,7 @@ with t1:
         df = pd.DataFrame(ss.scan["findings"], columns=["status", "call", "provider", "kind", "model",
                                                         "file", "line", "sources"])
         edited = st.data_editor(
-            df, hide_index=True, use_container_width=True, key="findings_editor",
+            df, hide_index=True, width="stretch", key="findings_editor",
             disabled=["provider", "kind", "file", "line", "sources"],
             column_config={"status": st.column_config.SelectboxColumn(options=scan.STATUSES, required=True)})
         ss.findings = edited.to_dict("records")
@@ -84,7 +85,8 @@ with t1:
     st.subheader("Interview profile")
     st.caption("One operation. `rate` keys come from `data/rates.json` or the pinned LiteLLM snapshot. "
                "Mark numbers `source: measured` only when they come from a real interview log.")
-    ss.profile_text = st.text_area("Profile (YAML)", ss.profile_text, height=380)
+    # Keyed widget: edits land in session state before the next run computes the estimate.
+    st.text_area("Profile (YAML)", key="profile_text", height=380)
 
     if result:
         st.subheader("Cost of one interview")
@@ -105,7 +107,7 @@ with t1:
                              "USD / unit": line.get("unit_price_usd"), "USD": cost,
                              "INR": None if cost is None else cost * rate, "rate": item["rate"],
                              "rate source": item["rate_source"], "evidence": ", ".join(item["evidence"])})
-        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True,
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
                      column_config={"USD / unit": st.column_config.NumberColumn(format="%.8f"),
                                     "USD": st.column_config.NumberColumn(format="%.5f"),
                                     "INR": st.column_config.NumberColumn(format="%.3f")})
@@ -134,7 +136,7 @@ with t2:
         lv = pd.DataFrame(opt["levers"])
         lv["status"] = lv["suspect"].map({True: "⚠ suspect price data", False: "✓ re-priced"})
         st.dataframe(lv[["call", "lever", "current_usd", "new_usd", "saving_pct", "status", "risk"]],
-                     hide_index=True, use_container_width=True,
+                     hide_index=True, width="stretch",
                      column_config={"current_usd": st.column_config.NumberColumn("now USD", format="%.4f"),
                                     "new_usd": st.column_config.NumberColumn("new USD", format="%.4f"),
                                     "saving_pct": st.column_config.NumberColumn("saving %", format="%.0f%%")})
@@ -153,6 +155,7 @@ with t3:
     demo = c2.toggle("Use the synthetic demo log", value=up is None)
     text = up.getvalue().decode() if up else SYNTHETIC.read_text() if demo else ""
     ss.actuals = None
+    ss.usage_text, ss.usage_synthetic = text or None, bool(demo and not up)
     if text:
         if demo and not up:
             st.warning("**Synthetic data.** The demo log is generated from the same assumptions as the profile, "
@@ -180,19 +183,19 @@ with t3:
                 alt.Y("count():Q", title="Interviews"),
                 tooltip=[alt.Tooltip("count():Q", title="Interviews"),
                          alt.Tooltip("cost_usd:Q", bin=alt.Bin(maxbins=24), title="USD range", format=".3f")])
-            st.altair_chart(hist, use_container_width=True)
+            st.altair_chart(hist, width="stretch")
 
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("**By role** (completed)")
             st.dataframe(pd.DataFrame([{"role": k, "interviews": v["n"], "mean USD": v["mean_usd"]}
                                        for k, v in s["by_role"].items()]),
-                         hide_index=True, use_container_width=True,
+                         hide_index=True, width="stretch",
                          column_config={"mean USD": st.column_config.NumberColumn(format="%.4f")})
         with c2:
             st.markdown("**By month**")
             st.dataframe(pd.DataFrame([{"month": k, **v} for k, v in s["by_month"].items()]),
-                         hide_index=True, use_container_width=True,
+                         hide_index=True, width="stretch",
                          column_config={"cost_usd": st.column_config.NumberColumn("USD", format="%.2f")})
 
         if result:
@@ -203,7 +206,7 @@ with t3:
                 verdict = "within" if cal["within_target"] else "outside"
                 st.write(f"Covered lines: estimate {money(cal['estimate_usd'])} vs actual {money(cal['actual_usd'])} "
                          f"→ **{cal['error_pct']:+.1f}%**, {verdict} the ±20% target.")
-                st.dataframe(pd.DataFrame(cal["lines"]), hide_index=True, use_container_width=True,
+                st.dataframe(pd.DataFrame(cal["lines"]), hide_index=True, width="stretch",
                              column_config={"estimate_usd": st.column_config.NumberColumn(format="%.4f"),
                                             "actual_mean_usd": st.column_config.NumberColumn(format="%.4f"),
                                             "error_pct": st.column_config.NumberColumn(format="%+.1f%%")})
@@ -215,7 +218,7 @@ with t3:
                              hide_index=True, num_rows="dynamic", key="invoices")
         invoices = {r["provider"]: r["invoice_usd"] for r in inv.to_dict("records") if r["provider"] and pd.notna(r["invoice_usd"])}
         if invoices:
-            st.dataframe(pd.DataFrame(act.reconcile(att, invoices)), hide_index=True, use_container_width=True,
+            st.dataframe(pd.DataFrame(act.reconcile(att, invoices)), hide_index=True, width="stretch",
                          column_config={"gap_pct": st.column_config.NumberColumn(format="%+.1f%%")})
             st.caption("A positive gap means usage the log doesn't capture (uninstrumented calls, retries, "
                        "minimums) or a rate that's wrong for your contract.")
@@ -261,7 +264,7 @@ with t4:
         opacity=alt.condition(hover, alt.value(1), alt.value(0)),
         tooltip=[alt.Tooltip("month:N"), alt.Tooltip("series:N"), alt.Tooltip("total_usd:Q", title="USD", format=",.0f")]
     ).add_params(hover)
-    st.altair_chart((band_ + line + pts).properties(height=320), use_container_width=True)
+    st.altair_chart((band_ + line + pts).properties(height=320), width="stretch")
     if a and a["by_month"]:
         last_m, last = list(a["by_month"].items())[-1]
         done_fc, done_act = rows[0]["completed"], last["completed"]
@@ -272,7 +275,7 @@ with t4:
     st.caption("Shaded band: volume ±{:.0%} × cost per interview {}. A scenario range, not a confidence interval."
                .format(profile["forecast"].get("volume_uncertainty", 0.25),
                        "p10–p90 from actuals" if band else f"±{profile['forecast'].get('cost_uncertainty', 0.2):.0%}"))
-    st.dataframe(df.drop(columns=["series", "date"]), hide_index=True, use_container_width=True,
+    st.dataframe(df.drop(columns=["series", "date"]), hide_index=True, width="stretch",
                  column_config={c: st.column_config.NumberColumn(format="%.0f") for c in
                                 ("roles", "invited", "completed", "abandoned", "hires")} |
                  {c: st.column_config.NumberColumn(format="%.2f") for c in
@@ -287,3 +290,8 @@ if profile and result:
               "optimise": est.levers(profile), "actuals_summary": ss.get("actuals")}
     st.sidebar.download_button("Export JSON", json.dumps(report, indent=2, default=str), "interview-cost.json",
                                "application/json")
+    usage_text = ss.get("usage_text")
+    html = rpt.render(rpt.build(profile, ss.get("findings", []), usage_text, None, ss.get("usage_synthetic", False),
+                                {k: v for k, v in ss.get("scan", {}).items() if k != "findings"} or None))
+    st.sidebar.download_button("Download HTML report", html, "interview-cost-report.html", "text/html",
+                               help="Static, offline report. Open it in a browser; print to PDF if needed.")

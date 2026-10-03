@@ -1,0 +1,216 @@
+<!doctype html>
+{% set e = estimate %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interview Cost Report</title>
+<style>
+/* Tokens from the validated dataviz palette; dark steps are their own validated set. Fully offline: no external assets. */
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --series-1: #2a78d6; --series-2: #eb6834; --band: rgba(42,120,214,0.14);
+  --warn-bg: #fff6e0; --warn-ink: #6b4b00; --warn: #fab219; --good: #006300; --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-2: #d95926; --band: rgba(57,135,229,0.20);
+    --warn-bg: #2b2310; --warn-ink: #f5d68a; --good: #0ca30c;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --series-1: #3987e5; --series-2: #d95926; --band: rgba(57,135,229,0.20);
+  --warn-bg: #2b2310; --warn-ink: #f5d68a; --good: #0ca30c;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -0.01em; }
+h2 { font-size: 19px; margin: 40px 0 12px; padding-top: 16px; border-top: 1px solid var(--grid); }
+h3 { font-size: 15px; margin: 24px 0 8px; }
+p, li { color: var(--ink-2); }
+.meta { color: var(--muted); font-size: 13px; }
+.badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); }
+.badge.partial { background: var(--warn-bg); color: var(--warn-ink); }
+.badge.complete { color: var(--good); }
+.callout { background: var(--warn-bg); color: var(--warn-ink); border-left: 3px solid var(--warn); border-radius: 6px; padding: 12px 16px; margin: 16px 0; }
+.callout p, .callout li { color: inherit; margin: 4px 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 20px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.tile .label { font-size: 13px; color: var(--ink-2); }
+.tile .value { font-size: 26px; font-weight: 600; margin-top: 2px; }
+.tile .sub { font-size: 13px; color: var(--muted); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th { text-align: left; font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--axis); padding: 6px 8px; white-space: nowrap; }
+td { border-bottom: 1px solid var(--grid); padding: 6px 8px; vertical-align: top; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.bars { display: grid; grid-template-columns: minmax(140px, 220px) 1fr auto; gap: 8px 12px; align-items: center; font-size: 13px; }
+.bar { height: 12px; background: var(--series-1); border-radius: 0 4px 4px 0; min-width: 2px; }
+.legend { display: flex; gap: 16px; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
+.key { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+svg text { fill: var(--muted); font-size: 11px; font-family: inherit; }
+.tag { font-size: 11px; color: var(--muted); }
+.suspect { color: var(--critical); }
+code { font-size: 12px; }
+@media print {
+  body { background: #fff; }
+  main { padding: 0; }
+  h2 { break-after: avoid; }
+  .card, .tile, table { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Interview cost report</h1>
+  <div class="meta">{{ e.operation }} · {{ generated }} ·
+    {% if e.partial %}<span class="badge partial">⚠ Partial estimate</span>{% else %}<span class="badge complete">✓ All detected costs priced</span>{% endif %}
+  </div>
+</header>
+
+{% if synthetic %}
+<div class="callout"><p><strong>Synthetic usage data.</strong> The usage log was generated from the profile's own assumptions. Actuals and calibration show only that the pipeline runs, not that the estimate is accurate.</p></div>
+{% endif %}
+
+<section class="tiles" aria-label="Headline figures">
+  <div class="tile"><div class="label">Variable cost / interview{% if e.partial %} (partial){% endif %}</div>
+    <div class="value">{{ e.variable_usd | usd }}</div><div class="sub">₹{{ e.variable_inr | num(2) }}</div></div>
+  <div class="tile"><div class="label">With best option per line</div>
+    <div class="value">{{ optimise.optimised_usd | usd }}</div><div class="sub">before quality checks</div></div>
+  {% if actuals and actuals.mean_completed_usd %}
+  <div class="tile"><div class="label">Actual mean / completed</div>
+    <div class="value">{{ actuals.mean_completed_usd | usd }}</div><div class="sub">{{ actuals.completed }} completed · p10 {{ actuals.p10_completed_usd | usd }} · p90 {{ actuals.p90_completed_usd | usd }}</div></div>
+  {% endif %}
+  {% if forecast %}
+  <div class="tile"><div class="label">Next {{ forecast.rows | length }} months</div>
+    <div class="value">{{ forecast.totals.total_usd | usd(0) }}</div><div class="sub">{{ forecast.totals.cost_per_hire_usd | usd(2) }} interview cost per hire</div></div>
+  {% endif %}
+</section>
+
+{% if e.gaps %}
+<div class="callout"><p><strong>Not in the total:</strong></p><ul>{% for g in e.gaps %}<li>{{ g }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<h2>1 · Cost of one interview</h2>
+{% if bars %}
+<div class="card">
+  <div class="bars" role="img" aria-label="Priced cost per line, largest first">
+  {% for b in bars %}
+    <div>{{ b.name }}</div><div><div class="bar" style="width: {{ '%.1f' % b.pct }}%"></div></div><div class="n">{{ b.usd | usd }} · {{ '%.0f' % b.share }}%</div>
+  {% endfor %}
+  </div>
+</div>
+{% endif %}
+<h3>Line items</h3>
+<div class="card"><table>
+  <thead><tr><th>Line</th><th>Status</th><th>Unit</th><th class="n">Billed</th><th class="n">USD / unit</th><th class="n">USD</th><th class="n">INR</th><th>Rate source</th></tr></thead>
+  <tbody>
+  {% for item in e["items"] %}{% for line in (item.lines or [{}]) %}
+    <tr><td>{{ item.name }}{% if loop.first %}<div class="tag">{{ item.rate }} · quantities {{ item.quantity_source }}{% if item.evidence %} · {{ item.evidence | join(', ') }}{% endif %}</div>{% endif %}</td>
+      <td>{{ item.status }}</td><td>{{ line.unit | default('') }}</td>
+      <td class="n">{{ line.billed | default(line.quantity) | default(None) | num(0) }}</td>
+      <td class="n">{% if line.unit_price_usd is defined %}{{ '%.8f' % line.unit_price_usd }}{% else %}—{% endif %}</td>
+      <td class="n">{{ line.cost_usd | default(None) | usd(5) }}</td>
+      <td class="n">{% if line.cost_usd is defined %}₹{{ (line.cost_usd * inr_rate) | num(3) }}{% else %}—{% endif %}</td>
+      <td class="tag">{% if loop.first %}{{ item.rate_source }}{% endif %}</td></tr>
+  {% endfor %}{% endfor %}
+  </tbody>
+</table></div>
+{% for item in e["items"] if item.note %}<p class="meta"><strong>{{ item.name }}:</strong> {{ item.note }}</p>{% endfor %}
+<p class="meta">Monthly fixed (separate): {{ e.monthly_fixed_usd | usd(2) }}{% if e.allocated_fixed_usd is not none %} · allocated per interview: {{ e.allocated_fixed_usd | usd }}{% endif %}</p>
+
+<h2>2 · Where to cut it</h2>
+{% if optimise.levers %}
+<p>Each option is re-priced with the same calculator. Savings are exact for the stated quantities; quality must be checked separately.</p>
+<div class="card"><table>
+  <thead><tr><th>Line</th><th>Option</th><th class="n">Now</th><th class="n">New</th><th class="n">Saving</th><th>Risk / check</th></tr></thead>
+  <tbody>
+  {% for l in optimise.levers %}
+    <tr><td>{{ l.call }}</td><td>{{ l.lever }}</td><td class="n">{{ l.current_usd | usd }}</td><td class="n">{{ l.new_usd | usd }}</td>
+      <td class="n">{{ '%.0f' % l.saving_pct }}%</td><td{% if l.suspect %} class="suspect"{% endif %}>{% if l.suspect %}⚠ {% endif %}{{ l.risk }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p>No cheaper option found for the priced lines.</p>{% endif %}
+
+{% if actuals %}
+<h2>3 · What interviews actually cost</h2>
+<p>{{ actuals.completed }} completed and {{ actuals.abandoned }} abandoned interviews{% if actuals.excluded_unpriced %}; {{ actuals.excluded_unpriced }} excluded for unpriced usage{% endif %}{% if actuals.skipped %}; {{ actuals.skipped }} spans skipped{% endif %}.
+  {% if actuals.usd_per_minute %}Cost per interview minute: {{ actuals.usd_per_minute | usd }}. {% endif %}
+  {% if actuals.abandoned_cost_share is not none %}An abandoned interview costs {{ '%.0f' % (100 * actuals.abandoned_cost_share) }}% of a completed one.{% endif %}</p>
+{% if actuals.unpriced %}<div class="callout"><p><strong>Unpriced usage:</strong></p><ul>{% for k, v in actuals.unpriced.items() %}<li>{{ k }} ×{{ v }}</li>{% endfor %}</ul></div>{% endif %}
+<h3>By role (completed)</h3>
+<div class="card"><table><thead><tr><th>Role</th><th class="n">Interviews</th><th class="n">Mean USD</th></tr></thead><tbody>
+{% for role, r in actuals.by_role.items() %}<tr><td>{{ role }}</td><td class="n">{{ r.n }}</td><td class="n">{{ r.mean_usd | usd }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% if calibration and calibration.lines %}
+<h3>Calibration: estimate vs actual, same lines, completed interviews only</h3>
+<p>Covered lines: estimate {{ calibration.estimate_usd | usd }} vs actual {{ calibration.actual_usd | usd }} →
+  <strong>{{ '%+.1f' % calibration.error_pct }}%</strong>, {{ 'within' if calibration.within_target else 'outside' }} the ±20% target.</p>
+<div class="card"><table><thead><tr><th>Line</th><th class="n">Estimate</th><th class="n">Actual mean</th><th class="n">Error</th><th class="n">Interviews</th></tr></thead><tbody>
+{% for l in calibration.lines %}<tr><td>{{ l.line }}</td><td class="n">{{ l.estimate_usd | usd }}</td><td class="n">{{ l.actual_mean_usd | usd }}</td><td class="n">{{ '%+.1f' % l.error_pct }}%</td><td class="n">{{ l.interviews }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% endif %}
+{% if reconcile %}
+<h3>Invoice reconciliation</h3>
+<div class="card"><table><thead><tr><th>Provider</th><th class="n">From usage</th><th class="n">Invoice</th><th class="n">Gap</th></tr></thead><tbody>
+{% for r in reconcile %}<tr><td>{{ r.provider }}</td><td class="n">{{ r.computed_usd | usd(2) }}</td><td class="n">{{ r.invoice_usd | usd(2) }}</td><td class="n">{{ r.gap_usd | usd(2) }}{% if r.gap_pct is not none %} ({{ '%+.1f' % r.gap_pct }}%){% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="meta">A positive gap is usage the log misses (uninstrumented calls, retries, minimums) or a rate that's wrong for your contract.</p>
+{% endif %}
+{% endif %}
+
+{% if forecast %}
+{% set c = forecast.chart %}
+<h2>4 · What the hiring plan will cost</h2>
+<p>Driven by the hiring funnel: roles → applicants → invited → started → completed or abandoned. Cost per completed interview from the {{ forecast.basis }}.</p>
+<div class="card">
+  <div class="legend"><span><span class="key" style="background: var(--series-1)"></span>Forecast (band: scenario range)</span>{% if forecast.has_history %}<span><span class="key" style="background: var(--series-2)"></span>Actual</span>{% endif %}</div>
+  <svg viewBox="0 0 {{ c.w }} {{ c.h }}" width="100%" role="img" aria-label="Monthly interview cost forecast in USD; see the table below for values">
+    {% for y, t in c.yticks %}<line x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ '%.1f' % y }}" y2="{{ '%.1f' % y }}" stroke="var(--grid)" stroke-width="1"/>
+    <text x="{{ c.left - 8 }}" y="{{ '%.1f' % (y + 4) }}" text-anchor="end">${{ '{:,.0f}'.format(t) }}</text>{% endfor %}
+    <line x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ c.bottom }}" y2="{{ c.bottom }}" stroke="var(--axis)" stroke-width="1"/>
+    {% for x, m in c.xticks %}<text x="{{ '%.1f' % x }}" y="{{ c.bottom + 18 }}" text-anchor="{{ 'end' if loop.last else 'start' if loop.first else 'middle' }}">{{ m }}</text>{% endfor %}
+    <polygon points="{{ c.band }}" fill="var(--band)"/>
+    {% if c.actual %}<polyline points="{{ c.actual }}" fill="none" stroke="var(--series-2)" stroke-width="2" stroke-linejoin="round"/>{% endif %}
+    <polyline points="{{ c.forecast }}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round"/>
+    {% for r in forecast.rows %}{% set p = c.forecast.split(' ')[loop.index0].split(',') %}
+    <circle cx="{{ p[0] }}" cy="{{ p[1] }}" r="8" fill="transparent"><title>{{ r.month }}: {{ r.total_usd | usd(0) }} (range {{ r.low_usd | usd(0) }}–{{ r.high_usd | usd(0) }})</title></circle>{% endfor %}
+    {% if c.last_forecast %}<circle cx="{{ '%.1f' % c.last_forecast[0] }}" cy="{{ '%.1f' % c.last_forecast[1] }}" r="4" fill="var(--series-1)" stroke="var(--surface)" stroke-width="2"/>{% endif %}
+  </svg>
+  <p class="meta">Band: interview volume ±{{ '%.0f' % (100 * profile.forecast.get('volume_uncertainty', 0.25)) }}% × cost per interview {{ 'p10–p90 from actuals' if forecast.basis == 'Phase 3 actuals' else '±%.0f%%' % (100 * profile.forecast.get('cost_uncertainty', 0.2)) }}. A scenario range, not a confidence interval.</p>
+</div>
+<h3>By month</h3>
+<div class="card"><table>
+  <thead><tr><th>Month</th><th class="n">Roles</th><th class="n">Invited</th><th class="n">Completed</th><th class="n">Abandoned</th><th class="n">Total</th><th class="n">Low</th><th class="n">High</th><th class="n">Per hire</th></tr></thead>
+  <tbody>
+  {% for r in forecast.rows %}<tr><td>{{ r.month }}</td><td class="n">{{ r.roles | num }}</td><td class="n">{{ r.invited | num }}</td><td class="n">{{ r.completed | num }}</td><td class="n">{{ r.abandoned | num }}</td>
+    <td class="n">{{ r.total_usd | usd(0) }}</td><td class="n">{{ r.low_usd | usd(0) }}</td><td class="n">{{ r.high_usd | usd(0) }}</td><td class="n">{{ r.cost_per_hire_usd | usd(2) }}</td></tr>{% endfor %}
+  <tr><td><strong>Total</strong></td><td></td><td></td><td class="n"><strong>{{ forecast.totals.completed | num }}</strong></td><td class="n">{{ forecast.totals.abandoned | num }}</td>
+    <td class="n"><strong>{{ forecast.totals.total_usd | usd(0) }}</strong></td><td class="n">{{ forecast.totals.low_usd | usd(0) }}</td><td class="n">{{ forecast.totals.high_usd | usd(0) }}</td><td class="n">{{ forecast.totals.cost_per_hire_usd | usd(2) }}</td></tr>
+  </tbody>
+</table></div>
+{% endif %}
+
+<h2>Provenance</h2>
+<div class="card"><table><tbody>
+  {% if scan.commit is defined or scan.source is defined %}<tr><td>Repository</td><td><code>{{ scan.source | default('') }}</code> at <code>{{ scan.commit | default('') or 'not a git repo' }}</code></td></tr>{% endif %}
+  {% if findings %}<tr><td>Call sites</td><td>{% for s, n in findings | groupby('status') %}{{ s }} {{ n | length }}{{ ', ' if not loop.last }}{% endfor %}</td></tr>{% endif %}
+  <tr><td>Model prices</td><td>LiteLLM <code>{{ e.price_snapshot.commit[:10] }}</code>, fetched {{ e.price_snapshot.fetched }}</td></tr>
+  <tr><td>USD → INR</td><td>{{ e.usd_inr.rate }} on {{ e.usd_inr.date }} ({{ e.usd_inr.source }})</td></tr>
+  {% for k, v in sources.items() %}<tr><td>Input: {{ k }}</td><td><code>{{ v }}</code></td></tr>{% endfor %}
+</tbody></table></div>
+</main>
+</body>
+</html>

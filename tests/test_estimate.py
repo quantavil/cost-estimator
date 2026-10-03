@@ -61,3 +61,71 @@ def test_verified_rate_is_priced(monkeypatch):
     p = {"operation": "x", "calls": [{"name": "phone", "rate": "twilio/voice-inbound-us-local",
                                       "units": {"minutes": 29.5}, "requests": 1}]}
     assert e.estimate(p)["variable_usd"] == pytest.approx(30 * 0.0085)
+
+
+@pytest.fixture
+def rates(monkeypatch):
+    """Isolated copy of rates.json the test can add entries to."""
+    r = copy.deepcopy(e.RATES)
+    monkeypatch.setattr(e, "RATES", r)
+    return r
+
+
+def _rate(**kw):
+    return {"source_url": "https://example.invalid", "checked": "2026-10-03", "basis": "test", "verified": True, **kw}
+
+
+def test_inr_billed_rate_converts_once(rates):
+    rates["exotel/voice"] = _rate(cost_per_minute=0.95, currency="INR", billing_increment=1)
+    out = e.estimate({"operation": "x", "usd_inr": {"rate": 95.0, "date": "d", "source": "s"},
+                      "calls": [{"name": "phone", "rate": "exotel/voice", "units": {"minutes": 2}}]})
+    assert out["variable_usd"] == pytest.approx(0.02) and out["variable_inr"] == pytest.approx(1.9)
+
+
+def test_billing_minimum_per_request(rates):
+    rates["v/stt"] = _rate(input_cost_per_second=0.01, billing_minimum=15, billing_increment=1)
+    out = e.estimate({"operation": "x", "calls": [{"name": "s", "rate": "v/stt", "units": {"audio_seconds": 20},
+                                                   "requests": 4}]})
+    assert out["items"][0]["lines"][0]["billed"] == 60  # 4 x max(5, 15)
+
+
+def test_unknown_currency_is_an_error(rates):
+    rates["eu/x"] = _rate(cost_per_minute=1, currency="EUR")
+    with pytest.raises(ValueError, match="EUR"):
+        e.estimate({"operation": "x", "calls": [{"name": "a", "rate": "eu/x", "units": {"minutes": 1}}]})
+
+
+@pytest.mark.parametrize("status,partial", [("covered", False), ("ignore", False), ("inventory", False),
+                                            ("candidate", True), ("unresolved", True)])
+def test_only_unreviewed_findings_make_it_partial(status, partial):
+    p = {"operation": "x", "calls": [{"name": "stt", "rate": "deepgram/nova-3", "units": {"audio_seconds": 1}}]}
+    f = [{"file": "a.py", "line": 1, "provider": "deepgram", "status": status, "call": ""}]
+    assert e.estimate(p, f)["partial"] is partial
+
+
+def test_anthropic_cache_writes_bill_at_premium():
+    p = {"operation": "x", "calls": [{"name": "llm", "rate": "claude-haiku-4-5", "chat": {
+        "turns": 2, "system_tokens": 2000, "user_tokens": 100, "assistant_tokens": 50, "prompt_caching": True}}]}
+    units = {l["unit"]: l for l in e.estimate(p)["items"][0]["lines"]}
+    assert "input_tokens" not in units and units["cache_write_tokens"]["quantity"] == 2100 + 150
+    assert units["cache_write_tokens"]["unit_price_usd"] > e.PRICES["claude-haiku-4-5"]["input_cost_per_token"]
+
+
+def test_truncation_that_shrinks_the_prompt_breaks_the_cache():
+    t = e.chat_tokens(turns=3, system_tokens=2000, user_tokens=500, assistant_tokens=500, max_history_tokens=1000,
+                      prompt_caching=True)
+    # prompts 2500, 3500, 3500: turn 2 reuses 2500; turn 3 shifted the window so nothing is cached
+    assert t["cached_input_tokens"] == 2500 and t["input_tokens"] == 2500 + 1000 + 3500
+
+
+def test_below_minimum_cache_size_is_not_cached():
+    t = e.chat_tokens(turns=3, system_tokens=100, user_tokens=10, assistant_tokens=10, prompt_caching=True)
+    assert t["cached_input_tokens"] == 0
+
+
+def test_lookup_order_and_reasons(rates):
+    rates["gpt-4o-mini"] = _rate(input_cost_per_token=1.0)  # rates.json wins over LiteLLM
+    assert e.lookup("gpt-4o-mini")[0]["input_cost_per_token"] == 1.0
+    rates["gpt-4o-mini"]["verified"] = False
+    assert e.lookup("gpt-4o-mini")[0] is None and "not verified" in e.lookup("gpt-4o-mini")[1]
+    assert e.lookup("nope/nope") == (None, "no rate for 'nope/nope'")

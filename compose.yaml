@@ -1,0 +1,28 @@
+services:
+  app:
+    build: .
+    image: interview-cost-workbench:local
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"   # write reports as you, not as root
+    ports:
+      - "127.0.0.1:8501:8501"       # reachable from this machine only
+    volumes:
+      - ${REPOS_DIR:-./repos}:/repos:ro   # repos to scan: enter /repos/<name> in the app
+      - ./reports:/app/reports           # static HTML reports written by `report`
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  report:                                # docker compose run --rm report --date 2026-10-03
+    image: interview-cost-workbench:local
+    profiles: [cli]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    entrypoint: ["python", "report.py", "--out", "reports/report.html"]
+    network_mode: none                   # report generation never needs a network
+    volumes:
+      - ./reports:/app/reports
+      - ./data:/app/data:ro
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]

@@ -30,15 +30,36 @@ def _git(cwd, *args):
                           capture_output=True, text=True, check=True, timeout=300).stdout.strip()
 
 
+def head_commit(repo):
+    """Commit of a local checkout without needing git installed. '' if not a git repo."""
+    git = Path(repo) / ".git"
+    if git.is_file():  # worktree or submodule: "gitdir: <path>"
+        git = (Path(repo) / git.read_text().split(":", 1)[1].strip()).resolve()
+    try:
+        head = (git / "HEAD").read_text().strip()
+    except OSError:
+        return ""
+    if not head.startswith("ref: "):
+        return head
+    ref = head[5:]
+    common = git / "commondir"
+    roots = [git] + ([(git / common.read_text().strip()).resolve()] if common.exists() else [])
+    for root in roots:
+        if (root / ref).exists():
+            return (root / ref).read_text().strip()
+        packed = root / "packed-refs"
+        if packed.exists():
+            for line in packed.read_text().splitlines():
+                if line.endswith(" " + ref):
+                    return line.split()[0]
+    return ""  # branch with no commits yet
+
+
 def checkout(source, ref=""):
     """Local directory or allowed git URL -> (path, commit sha). Pins `ref` (sha/branch/tag) if given."""
     local = Path(source).expanduser()
     if local.is_dir():
-        try:
-            sha = _git(local, "rev-parse", "HEAD")
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            sha = ""
-        return local.resolve(), sha
+        return local.resolve(), head_commit(local)
     if not source.startswith(ALLOWED_PREFIXES) or any(c in source for c in " ;|&$`"):
         raise ValueError(f"Only local paths or URLs starting with {ALLOWED_PREFIXES} are allowed")
     dest = Path(tempfile.mkdtemp(prefix="cost-estimator-"))

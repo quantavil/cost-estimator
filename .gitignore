@@ -4,3 +4,7 @@ __pycache__/
 cost-estimate.json
 aibom.json
 semgrep.json
+reports/
+repos/
+.hypothesis/
+report.html
