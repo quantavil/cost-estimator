@@ -21,6 +21,10 @@ calls:
       history: full                # full | none
       max_history_tokens: null     # set if the app truncates history
       prompt_caching: true         # provider-side prefix caching (OpenAI: automatic above 1024 tokens)
+    alternatives:                  # Phase 2 what-ifs: any rate/units/chat override, re-priced exactly
+      - label: Switch to gpt-4.1-nano
+        rate: gpt-4.1-nano
+        risk: Weaker follow-up questions and scoring; run the interview eval set (rubric agreement) first.
 
   - name: Candidate speech-to-text
     rate: deepgram/nova-3
@@ -31,6 +35,10 @@ calls:
       Deepgram's pre-recorded rate; live streaming is billed at a different rate, so check it before trusting this line.
     units: {audio_seconds: 1800}
     requests: 1
+    alternatives:
+      - label: Gate STT with voice-activity detection (bill ~18 min of candidate speech)
+        units: {audio_seconds: 1080}
+        risk: Clipped first syllables if VAD is too aggressive; check transcript accuracy on recorded interviews.
 
   - name: Interviewer text-to-speech
     rate: elevenlabs/eleven_multilingual_v2
@@ -38,6 +46,11 @@ calls:
     evidence: [interview_app/app.py:20]
     note: ~1,200 spoken words x 6 characters.
     units: {characters: 7200}
+    alternatives:
+      - label: OpenAI gpt-4o-mini-tts (~8 min generated audio)
+        rate: gpt-4o-mini-tts
+        units: {input_tokens: 1600, output_audio_seconds: 480}
+        risk: Different voice and latency; candidates notice voice quality, so test with real candidates.
 
   - name: Phone leg (inbound, US local)
     rate: twilio/voice-inbound-us-local
@@ -45,3 +58,18 @@ calls:
     note: Remove if candidates join by browser/WebRTC instead of phone.
     units: {minutes: 30}
     requests: 1
+
+# Phase 4: hiring-funnel drivers. All ASSUMED until replaced from your ATS and Phase 3 actuals.
+forecast:
+  start: "2026-11"
+  months: 12
+  open_roles: 40               # roles opened per month at start
+  roles_growth_pct: 3          # month-over-month change in roles opened
+  applicants_per_role: 120
+  invite_rate: 0.25            # share of applicants sent the AI interview
+  start_rate: 0.70             # invited candidates who start it
+  completion_rate: 0.85        # started interviews that finish
+  abandoned_cost_share: 0.35   # abandoned interview cost / completed (Phase 3 measures this)
+  hires_per_role: 1
+  volume_uncertainty: 0.25     # +/- on interview volume for the low/high band
+  cost_uncertainty: 0.20       # +/- on cost per interview when no Phase 3 actuals exist

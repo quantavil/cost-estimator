@@ -1,4 +1,5 @@
 """Price lookup and the deterministic per-operation cost calculation."""
+import copy
 import json
 import math
 from pathlib import Path
@@ -76,7 +77,8 @@ def price_call(call, usd_per_unit_currency):
     if "chat" in call:
         chat = dict(call["chat"])
         if rate and chat.get("prompt_caching"):
-            chat.setdefault("cache_writes", "cache_creation_input_token_cost" in rate)
+            # Only Anthropic-style caching charges a premium to write the cache; OpenAI-style writes bill as input.
+            chat.setdefault("cache_writes", rate.get("cache_creation_input_token_cost", 0) > rate.get("input_cost_per_token", 0))
         units.update({k: v for k, v in chat_tokens(**chat).items() if v})
     item = {"name": call["name"], "rate": call["rate"], "quantity_source": call.get("source", "assumed"),
             "evidence": call.get("evidence", []), "rate_source": source, "lines": [], "cost_usd": None,
@@ -102,16 +104,21 @@ def price_call(call, usd_per_unit_currency):
     return item
 
 
-def estimate(profile, findings=()):
-    """Profile dict (see data/interview.yaml) + reviewed findings -> itemised, labelled estimate."""
-    usd_inr = profile.get("usd_inr") or META["usd_inr"]
+def converter(usd_inr):
+    """Billing currency -> USD multiplier, from the one recorded dated rate."""
     to_usd = {"USD": 1.0, "INR": 1 / usd_inr["rate"]}
 
     def usd_per(currency):
         if currency not in to_usd:
             raise ValueError(f"No conversion for {currency}")
         return to_usd[currency]
+    return usd_per
 
+
+def estimate(profile, findings=()):
+    """Profile dict (see data/interview.yaml) + reviewed findings -> itemised, labelled estimate."""
+    usd_inr = profile.get("usd_inr") or META["usd_inr"]
+    usd_per = converter(usd_inr)
     items = [price_call(c, usd_per) for c in profile["calls"]]
     variable = sum(i["cost_usd"] for i in items if i["cost_usd"] is not None)
     gaps = [f"Unpriced: {i['name']} ({i['rate_source']})" for i in items if i["status"] == "unpriced"]
@@ -140,6 +147,68 @@ def estimate(profile, findings=()):
         "usd_inr": usd_inr,
         "price_snapshot": META["litellm_snapshot"],
     }
+
+
+LEVER_KEYS = ("rate", "units", "chat", "requests")
+
+
+def _with(profile, idx, change):
+    p = copy.deepcopy(profile)
+    call = p["calls"][idx]
+    for k, v in change.items():
+        if k == "chat":
+            call[k] = {**call.get(k, {}), **v}
+        elif k in LEVER_KEYS:
+            call[k] = v
+    return p
+
+
+def levers(profile):
+    """Phase 2: what-if savings per call. Each lever is re-priced with the same calculator, never guessed."""
+    base = estimate(profile)
+    out = []
+    for idx, (call, item) in enumerate(zip(profile["calls"], base["items"])):
+        if item["status"] != "priced":
+            continue
+        options = []
+        model = call["rate"].split("/")[-1]
+        mode = PRICES.get(call["rate"], {}).get("mode")
+        # Same model, different billing path (direct, cloud, reseller). Quality-neutral; terms are not.
+        for key in PRICES:
+            if key != call["rate"] and key.split("/")[-1] == model and PRICES[key].get("mode") == mode:
+                options.append((f"Bill via {key}", {"rate": key, "_same_model": True},
+                                "Same model, different billing path: check contract, region and where candidate data is processed."))
+        chat = call.get("chat")
+        if chat and not chat.get("prompt_caching"):
+            options.append(("Turn on prompt caching", {"chat": {"prompt_caching": True}},
+                            "Keep the system prompt and history as a stable prefix; no quality change."))
+        if chat and chat.get("history", "full") == "full" and not chat.get("max_history_tokens"):
+            options.append(("Cap history at 4,000 tokens", {"chat": {"max_history_tokens": 4000}},
+                            "Interviewer can lose early answers; keep a short rolling summary of the candidate."))
+        for alt in call.get("alternatives", []):
+            options.append((alt.get("label", alt.get("rate", "alternative")), alt,
+                            alt.get("risk", "Quality not verified: run your interview eval set before switching.")))
+        for label, change, risk in options:
+            new = estimate(_with(profile, idx, change))["items"][idx]
+            if new["status"] != "priced" or new["cost_usd"] >= item["cost_usd"] - 1e-12:
+                continue
+            pct = 100 * (1 - new["cost_usd"] / item["cost_usd"])
+            # The same model resold rarely differs by half; a bigger gap is a unit or data error in the price file.
+            suspect = change.get("_same_model") and pct > 50
+            out.append({"call": call["name"], "lever": label, "current_usd": item["cost_usd"],
+                        "new_usd": new["cost_usd"], "saving_usd": item["cost_usd"] - new["cost_usd"],
+                        "saving_pct": pct, "suspect": bool(suspect),
+                        "risk": "Suspect price data (same model, >50% cheaper): verify the unit before acting." if suspect
+                        else risk, "change": {k: v for k, v in change.items() if not k.startswith("_")}})
+    out.sort(key=lambda r: -r["saving_usd"])
+    # ponytail: best single lever per call; stacking levers within one call needs a re-price of the combination.
+    best = {}
+    for r in out:
+        if not r["suspect"]:
+            best.setdefault(r["call"], r)
+    return {"levers": out, "best_per_call": list(best.values()),
+            "current_usd": base["variable_usd"],
+            "optimised_usd": base["variable_usd"] - sum(r["saving_usd"] for r in best.values())}
 
 
 def load_profile(text=None):
