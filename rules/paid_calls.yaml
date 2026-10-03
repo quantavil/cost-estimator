@@ -1,0 +1,91 @@
+# Billable call sites. scan.py reads the model literal from each matched span.
+# ponytail: common interview-stack SDKs only; add a rule when a scan shows an unresolved call that matters.
+rules:
+  - id: openai-llm
+    languages: [python, javascript, typescript]
+    severity: INFO
+    message: OpenAI chat/responses call
+    metadata: {provider: openai, kind: llm}
+    pattern-either:
+      - pattern: $C.chat.completions.create(...)
+      - pattern: $C.responses.create(...)
+  - id: openai-audio
+    languages: [python, javascript, typescript]
+    severity: INFO
+    message: OpenAI speech/transcription call
+    metadata: {provider: openai, kind: audio}
+    pattern-either:
+      - pattern: $C.audio.speech.create(...)
+      - pattern: $C.audio.transcriptions.create(...)
+  - id: openai-realtime
+    languages: [python, javascript, typescript]
+    severity: INFO
+    message: OpenAI Realtime session (audio tokens)
+    metadata: {provider: openai, kind: realtime}
+    pattern-either:
+      - pattern: $C.realtime.connect(...)
+      - pattern: $C.beta.realtime.connect(...)
+  - id: anthropic-llm
+    languages: [python]
+    severity: INFO
+    message: Anthropic messages call
+    metadata: {provider: anthropic, kind: llm}
+    pattern-either:
+      - pattern: $C.messages.create(..., model=$M, ...)
+      - pattern: $C.messages.stream(..., model=$M, ...)
+  - id: anthropic-llm-js
+    languages: [javascript, typescript]
+    severity: INFO
+    message: Anthropic messages call
+    metadata: {provider: anthropic, kind: llm}
+    pattern-either:
+      - pattern: '$C.messages.create({..., model: $M, ...})'
+      - pattern: '$C.messages.stream({..., model: $M, ...})'
+  - id: gemini-llm
+    languages: [python, javascript, typescript]
+    severity: INFO
+    message: Google Gemini generate call
+    metadata: {provider: gemini, kind: llm}
+    pattern-either:
+      - pattern: $C.models.generate_content(...)
+      - pattern: $C.models.generateContent(...)
+      - pattern: $C.generate_content(...)
+  - id: deepgram-stt
+    languages: [python, javascript, typescript]
+    severity: INFO
+    message: Deepgram transcription (per audio second)
+    metadata: {provider: deepgram, kind: stt}
+    pattern-either:
+      - pattern: $C.listen.$A.$B(...)
+      - pattern: $C.listen.$A.$B.$D(...)
+      - pattern: $C.listen.live(...)
+  - id: elevenlabs-tts
+    languages: [python, javascript, typescript]
+    severity: INFO
+    message: ElevenLabs text-to-speech (per character)
+    metadata: {provider: elevenlabs, kind: tts}
+    pattern-either:
+      - pattern: $C.text_to_speech.$OP(...)
+      - pattern: $C.textToSpeech.$OP(...)
+  - id: twilio-voice
+    languages: [python, javascript, typescript]
+    severity: INFO
+    message: Twilio call (per minute)
+    metadata: {provider: twilio, kind: telephony}
+    pattern: $C.calls.create(...)
+  - id: raw-http
+    languages: [python]
+    severity: INFO
+    message: Outbound HTTP call (unresolved until mapped)
+    metadata: {provider: unknown, kind: http}
+    pattern-either:
+      - pattern: requests.$VERB(...)
+      - pattern: httpx.$VERB(...)
+  - id: raw-http-js
+    languages: [javascript, typescript]
+    severity: INFO
+    message: Outbound HTTP call (unresolved until mapped)
+    metadata: {provider: unknown, kind: http}
+    pattern-either:
+      - pattern: fetch(...)
+      - pattern: axios.$VERB(...)

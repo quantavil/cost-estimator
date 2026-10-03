@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+.pytest_cache/
+cost-estimate.json
+aibom.json
+semgrep.json

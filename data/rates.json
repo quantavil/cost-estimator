@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "litellm_snapshot": {
+      "file": "data/model_prices.json",
+      "source": "https://github.com/BerriAI/litellm/blob/5724117116102665495b9bad0c998fd210cdee06/model_prices_and_context_window.json",
+      "commit": "5724117116102665495b9bad0c998fd210cdee06",
+      "fetched": "2026-10-03",
+      "currency": "USD"
+    },
+    "usd_inr": {
+      "rate": 95.16,
+      "date": "2026-10-03",
+      "source": "https://www.poundsterlinglive.com/data/currencies/usd-pairs/USDINR-exchange-rate",
+      "note": "Indicative mid-market rate from a web search; replace with your bank or invoice rate."
+    }
+  },
+  "twilio/voice-inbound-us-local": {
+    "cost_per_minute": 0.0085,
+    "billing_increment": 1,
+    "currency": "USD",
+    "region": "US",
+    "basis": "published pay-as-you-go",
+    "source_url": "https://www.twilio.com/en-us/voice/pricing/us",
+    "checked": "2026-10-03",
+    "verified": false,
+    "note": "Official page blocked from the build environment; value taken from the page's search snippet. Twilio rounds each call up to the next minute. Phone number rental is a monthly fixed cost."
+  }
+}

@@ -1,0 +1,47 @@
+# One business operation. Every number here is ASSUMED until replaced by a measured value
+# from a real interview log (then set `source: measured`).
+operation: conduct_interview (30 min AI interview)
+
+# Fixed costs are shown separately, never mixed into the variable cost.
+monthly_fixed_usd: 0          # e.g. phone numbers, servers, vendor platform fees
+operations_per_month: 0       # interviews per month, used only to allocate the fixed cost
+
+calls:
+  # `rate` is a key in data/rates.json or the pinned LiteLLM snapshot (data/model_prices.json).
+  # Use the key for whoever actually bills you: e.g. openrouter/openai/gpt-4o-mini or azure/gpt-4o-mini.
+  - name: Interviewer LLM
+    rate: gpt-4o-mini
+    source: assumed
+    evidence: [interview_app/app.py:12]
+    chat:
+      turns: 20                    # question/answer exchanges
+      system_tokens: 1500          # instructions + job description + rubric
+      user_tokens: 155             # ~18 min candidate speech / 20 turns
+      assistant_tokens: 80         # ~8 min interviewer speech / 20 turns
+      history: full                # full | none
+      max_history_tokens: null     # set if the app truncates history
+      prompt_caching: true         # provider-side prefix caching (OpenAI: automatic above 1024 tokens)
+
+  - name: Candidate speech-to-text
+    rate: deepgram/nova-3
+    source: assumed
+    evidence: [interview_app/app.py:16]
+    note: >-
+      Streaming STT bills all streamed audio, not just speech (30 min). LiteLLM's nova-3 price is
+      Deepgram's pre-recorded rate; live streaming is billed at a different rate, so check it before trusting this line.
+    units: {audio_seconds: 1800}
+    requests: 1
+
+  - name: Interviewer text-to-speech
+    rate: elevenlabs/eleven_multilingual_v2
+    source: assumed
+    evidence: [interview_app/app.py:20]
+    note: ~1,200 spoken words x 6 characters.
+    units: {characters: 7200}
+
+  - name: Phone leg (inbound, US local)
+    rate: twilio/voice-inbound-us-local
+    source: assumed
+    note: Remove if candidates join by browser/WebRTC instead of phone.
+    units: {minutes: 30}
+    requests: 1
