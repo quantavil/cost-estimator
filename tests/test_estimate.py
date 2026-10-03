@@ -129,3 +129,11 @@ def test_lookup_order_and_reasons(rates):
     rates["gpt-4o-mini"]["verified"] = False
     assert e.lookup("gpt-4o-mini")[0] is None and "not verified" in e.lookup("gpt-4o-mini")[1]
     assert e.lookup("nope/nope") == (None, "no rate for 'nope/nope'")
+
+
+def test_stale_inputs_flags_old_prices_only():
+    assert e.stale_inputs("2026-10-03") == []
+    old = e.stale_inputs("2027-06-01")
+    labels = {label for label, _, _ in old}
+    assert {"LiteLLM price snapshot", "USD→INR rate"} <= labels
+    assert all(age > e.STALE_DAYS for _, _, age in old)

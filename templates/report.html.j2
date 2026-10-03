@@ -79,6 +79,9 @@ code { font-size: 12px; }
   </div>
 </header>
 
+{% if stale %}
+<div class="callout"><p><strong>Prices may be out of date</strong> (older than {{ stale_days }} days on {{ generated }}):</p><ul>{% for label, d, age in stale %}<li>{{ label }}: {{ d }} ({{ age }} days)</li>{% endfor %}</ul></div>
+{% endif %}
 {% if synthetic %}
 <div class="callout"><p><strong>Synthetic usage data.</strong> The usage log was generated from the profile's own assumptions. Actuals and calibration show only that the pipeline runs, not that the estimate is accurate.</p></div>
 {% endif %}

@@ -60,7 +60,8 @@ def build(profile, findings=(), usage_text=None, invoices=None, synthetic=False,
     opt = est.levers(profile)
     ctx = {"generated": generated or date.today().isoformat(), "profile": profile, "estimate": result,
            "optimise": opt, "scan": scan_meta or {}, "findings": list(findings), "synthetic": synthetic,
-           "sources": sources or {}, "actuals": None, "calibration": None, "reconcile": None, "forecast": None}
+           "sources": sources or {}, "stale": None, "actuals": None, "calibration": None, "reconcile": None, "forecast": None}
+    ctx["stale"] = est.stale_inputs(ctx["generated"])
     history, band, share, per_iv, basis = [], None, None, result["variable_usd"], "Phase 1 estimate"
     if usage_text:
         events, skipped = act.load(usage_text)
@@ -87,7 +88,8 @@ def build(profile, findings=(), usage_text=None, invoices=None, synthetic=False,
 
 
 def render(ctx):
-    return ENV.get_template("report.html.j2").render(**ctx, inr_rate=ctx["estimate"]["usd_inr"]["rate"])
+    return ENV.get_template("report.html.j2").render(**ctx, inr_rate=ctx["estimate"]["usd_inr"]["rate"],
+                                                       stale_days=est.STALE_DAYS)
 
 
 def _digest(text):

@@ -2,6 +2,7 @@
 import copy
 import json
 import math
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -25,6 +26,16 @@ UNIT_FIELDS = {
     "minutes": "cost_per_minute",
 }
 ROUNDED_UNITS = {"audio_seconds", "output_audio_seconds", "minutes"}
+STALE_DAYS = 90
+
+
+def stale_inputs(today, max_days=STALE_DAYS):
+    """Dated price inputs older than max_days on `today` (ISO date): [(label, date, age_days)]."""
+    t = date.fromisoformat(today)
+    dated = [("LiteLLM price snapshot", META["litellm_snapshot"]["fetched"]), ("USD→INR rate", META["usd_inr"]["date"])]
+    dated += [(f"{k} rate", v["checked"]) for k, v in RATES.items() if v.get("checked")]
+    return [(label, d, (t - date.fromisoformat(d)).days) for label, d in dated
+            if (t - date.fromisoformat(d)).days > max_days]
 
 
 def lookup(key):

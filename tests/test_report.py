@@ -51,3 +51,11 @@ def test_cli_writes_report_and_hashes_inputs(tmp_path):
     r.main(["--usage", str(usage), "--synthetic", "--date", "2026-10-03", "--out", str(out)])
     html = out.read_text()
     assert "u.jsonl (sha256 " in html and "interview.yaml (sha256 " in html and str(tmp_path) not in html
+
+
+def test_report_warns_when_prices_are_stale():
+    profile = e.load_profile((e.DATA / "interview.yaml").read_text())
+    fresh = r.render(r.build(profile, generated="2026-10-03"))
+    old = r.render(r.build(profile, generated="2027-06-01"))
+    assert "Prices may be out of date" not in fresh
+    assert "Prices may be out of date" in old

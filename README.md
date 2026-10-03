@@ -53,6 +53,15 @@ The app's sidebar also offers **Download HTML report**.
 - `data/model_prices.json`: LiteLLM price file pinned at commit `5724117`, fetched 2026-10-03.
 - `data/rates.json`: rates LiteLLM lacks, each with source URL, date and basis, plus the dated USD→INR rate. Rates marked `verified: false` stay unpriced.
 - `tests/fixtures/usage_synthetic.jsonl`: **synthetic**, generated from the profile's own assumptions. It shows the pipeline works; it says nothing about estimate accuracy.
+- The app and the report warn when any dated price input is older than 90 days (`estimate.STALE_DAYS`).
+
+To refresh prices (needs internet, run deliberately, then review the diff):
+
+```bash
+C=$(git ls-remote https://github.com/BerriAI/litellm HEAD | cut -f1)
+curl -fsSL "https://raw.githubusercontent.com/BerriAI/litellm/$C/model_prices_and_context_window.json" -o data/model_prices.json
+# then set _meta.litellm_snapshot.commit / fetched in data/rates.json, and re-run the tests
+```
 
 ## Known gaps (fix with real inputs, not code)
 

@@ -1,5 +1,6 @@
 """Interview cost workbench: estimate (1), optimise (2), actuals (3), forecast (4). One profile drives all four."""
 import json
+from datetime import date
 from pathlib import Path
 
 import altair as alt
@@ -90,6 +91,9 @@ with t1:
 
     if result:
         st.subheader("Cost of one interview")
+        if stale := est.stale_inputs(date.today().isoformat()):
+            st.warning(f"**Prices may be out of date** (older than {est.STALE_DAYS} days):\n\n"
+                       + "\n".join(f"- {label}: {d} ({age} days)" for label, d, age in stale))
         if result["partial"]:
             st.warning("**Partial estimate.** Not in the total:\n\n" + "\n".join(f"- {g}" for g in result["gaps"]))
         m1, m2, m3 = st.columns(3)
